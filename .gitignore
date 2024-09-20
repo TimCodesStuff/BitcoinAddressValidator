@@ -1,7 +1,7 @@
 # Ignore the bin and obj folders in the project folder
 /BitcoinAddressValidator/bin
 /BitcoinAddressValidator/obj
-/BitcoinAddressValidator/.vs
+/.vs
 
 # Ignore other Visual Studio build outputs (if you have other project folders)
 /**/bin
