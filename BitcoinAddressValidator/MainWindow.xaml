@@ -18,23 +18,57 @@
             <!-- Second Tab: Display Addresses from Database -->
             <TabItem Header="Stored Addresses">
                 <StackPanel>
-                    <ListView Name="AddressListView" Width="400" Height="300" Margin="10">
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Address" DisplayMemberBinding="{Binding Address}" Width="200"/>
-                                <GridViewColumn Header="Type" DisplayMemberBinding="{Binding Type}" Width="100"/>
-                                <GridViewColumn Header="Balance" DisplayMemberBinding="{Binding Balance}" Width="100"/>
-                            </GridView>
-                        </ListView.View>
-                    </ListView>
+                    <DataGrid x:Name="AddressesDataGrid" AutoGenerateColumns="False" SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="*" />
+                            <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto" />
+                            <DataGridTextColumn Header="Balance" Binding="{Binding Balance}" Width="Auto" />
+                        </DataGrid.Columns>
+                    </DataGrid>
 
                     <!-- Buttons for exporting data -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
+                        <Button Content="Remove Selected Address" Click="RemoveSelectedAddress_Click" />
                         <Button Content="Export to JSON" Width="120" Click="ExportToJson_Click" Margin="5"/>
                         <Button Content="Export to CSV" Width="120" Click="ExportToCsv_Click" Margin="5"/>
                     </StackPanel>
                 </StackPanel>
             </TabItem>
+
+            <TabItem Header="Generate Addresses from String">
+                <StackPanel>
+                    <TextBox Name="StringInput" Width="400" Margin="10" />
+                    <Button Content="Generate Addresses" Width="150" Margin="10" Click="GenerateAddresses_Click" />
+
+                    <!-- Generated addresses section -->
+                    <TextBlock Text="Generated Addresses:" FontWeight="Bold" Margin="10"/>
+
+                    <!-- P2PKH Address -->
+                    <TextBlock Text="P2PKH Address:" FontWeight="Bold" Margin="5"/>
+                    <StackPanel Orientation="Horizontal" Margin="5">
+                        <TextBox Name="P2PKHTextBox" Width="300" IsReadOnly="True" />
+                        <Button Content="Copy" Width="50" Click="CopyP2PKH_Click" />
+                        <TextBlock Name="P2PKHStatus" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    </StackPanel>
+
+                    <!-- P2SH Address -->
+                    <TextBlock Text="P2SH Address:" FontWeight="Bold" Margin="5"/>
+                    <StackPanel Orientation="Horizontal" Margin="5">
+                        <TextBox Name="P2SHTextBox" Width="300" IsReadOnly="True" />
+                        <Button Content="Copy" Width="50" Click="CopyP2SH_Click" />
+                        <TextBlock Name="P2SHStatus" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    </StackPanel>
+
+                    <!-- Segwit Address -->
+                    <TextBlock Text="Segwit Address:" FontWeight="Bold" Margin="5"/>
+                    <StackPanel Orientation="Horizontal" Margin="5">
+                        <TextBox Name="SegwitTextBox" Width="300" IsReadOnly="True" />
+                        <Button Content="Copy" Width="50" Click="CopySegwit_Click" />
+                        <TextBlock Name="SegwitStatus" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </TabItem>
+
 
         </TabControl>
     </Grid>

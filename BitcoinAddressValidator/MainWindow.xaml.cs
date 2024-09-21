@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿
 using System.Windows;
 using System.Windows.Media;
 using NBitcoin;
@@ -7,6 +6,9 @@ using System.Net.Http;
 using Newtonsoft.Json;
 using System.Text;
 using System.IO;
+using NBitcoin.DataEncoders;
+using System.Security.Cryptography;
+
 
 namespace BitcoinAddressValidator
 {
@@ -87,11 +89,15 @@ namespace BitcoinAddressValidator
 
             // Get balance via API call
             decimal balance = await GetBitcoinBalance(address);
-            if (balance >= 0)
+            if (balance > 0)
             {
-                // Add to database if valid
+                // Add to database only if balance is greater than 0
                 await AddAddressToDatabase(address, addressType, balance);
-                return $"Address: {address} - Type: {addressType}, Balance: {balance} BTC";
+                return $"Address: {address} - Type: {addressType}, Balance: {balance} BTC - Added to database";
+            }
+            else if (balance == 0)
+            {
+                return $"Address: {address} - Type: {addressType}, Balance: 0 BTC - Not added to database";
             }
             else
             {
@@ -182,14 +188,8 @@ namespace BitcoinAddressValidator
                 // Fetch the addresses from the database
                 var addresses = context.Addresses.ToList();
 
-                // Clear the existing items
-                AddressListView.Items.Clear();
-
-                // Add each address to the ListView
-                foreach (var addressRecord in addresses)
-                {
-                    AddressListView.Items.Add(addressRecord);
-                }
+                // Set the DataGrid's item source to the list of addresses
+                AddressesDataGrid.ItemsSource = addresses;
             }
         }
 
@@ -232,6 +232,121 @@ namespace BitcoinAddressValidator
             }
         }
 
+        // Event handler for the "Remove Selected Address" button
+        private void RemoveSelectedAddress_Click(object sender, RoutedEventArgs e)
+        {
+            if (AddressesDataGrid.SelectedItem is BitcoinAddressRecord selectedAddress)
+            {
+                var result = MessageBox.Show($"Are you sure you want to remove the address: {selectedAddress.Address}?", "Confirm Delete", MessageBoxButton.YesNo);
 
+                if (result == MessageBoxResult.Yes)
+                {
+                    // Remove the selected address from the database
+                    DeleteAddressFromDb(selectedAddress.Id);
+
+                    // Refresh the DataGrid
+                    LoadAddressesFromDatabase();
+                }
+            }
+        }
+
+        // Method to delete the selected address from the SQLite database
+        private void DeleteAddressFromDb(int id)
+        {
+            using (var context = new BitcoinAddressContext())
+            {
+                // Find the address record by its Id
+                var addressRecord = context.Addresses.FirstOrDefault(a => a.Id == id);
+
+                if (addressRecord != null)
+                {
+                    // Remove the address record from the database
+                    context.Addresses.Remove(addressRecord);
+                    context.SaveChanges(); // Save changes to commit the deletion
+                }
+            }
+        }
+
+        // Event handler for generating addresses from the input string
+        private void GenerateAddresses_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the input string
+            string inputString = StringInput.Text;
+
+            if (string.IsNullOrWhiteSpace(inputString))
+            {
+                MessageBox.Show("Please enter a valid string.");
+                return;
+            }
+
+            // Generate SHA-256 hash
+            string privateKeyHex = ComputeSHA256Hash(inputString);
+            var key = new Key(Encoders.Hex.DecodeData(privateKeyHex));
+
+            // Generate P2PKH (Legacy) address
+            string p2pkhAddress = key.PubKey.GetAddress(ScriptPubKeyType.Legacy, Network.Main).ToString();
+
+            // Generate P2SH (P2WPKH wrapped in P2SH) address
+            string p2shAddress = key.PubKey.WitHash.ScriptPubKey.Hash.GetAddress(Network.Main).ToString();
+
+            // Generate Segwit (Bech32) address
+            string segwitAddress = key.PubKey.WitHash.GetAddress(Network.Main).ToString();
+
+            // Check if the addresses are in the database
+            bool p2pkhExists = AddressExistsInDatabase(p2pkhAddress);
+            bool p2shExists = AddressExistsInDatabase(p2shAddress);
+            bool segwitExists = AddressExistsInDatabase(segwitAddress);
+
+            // Set the values in the TextBoxes
+            P2PKHTextBox.Text = p2pkhAddress;
+            P2SHTextBox.Text = p2shAddress;
+            SegwitTextBox.Text = segwitAddress;
+
+            // Set the status for whether the addresses exist in the database
+            P2PKHStatus.Text = p2pkhExists ? "Found in DB" : "Not Found in DB";
+            P2SHStatus.Text = p2shExists ? "Found in DB" : "Not Found in DB";
+            SegwitStatus.Text = segwitExists ? "Found in DB" : "Not Found in DB";
+        }
+
+        // Copy button for P2PKH address
+        private void CopyP2PKH_Click(object sender, RoutedEventArgs e)
+        {
+            Clipboard.SetText(P2PKHTextBox.Text);
+        }
+
+        // Copy button for P2SH address
+        private void CopyP2SH_Click(object sender, RoutedEventArgs e)
+        {
+            Clipboard.SetText(P2SHTextBox.Text);
+        }
+
+        // Copy button for Segwit address
+        private void CopySegwit_Click(object sender, RoutedEventArgs e)
+        {
+            Clipboard.SetText(SegwitTextBox.Text);
+        }
+
+
+
+
+        // Compute SHA-256 hash of the input string
+        private string ComputeSHA256Hash(string input)
+        {
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(input));
+                return BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
+            }
+        }
+
+        // Check if the given address exists in the database
+        private bool AddressExistsInDatabase(string address)
+        {
+            using (var context = new BitcoinAddressContext())
+            {
+                return context.Addresses.Any(a => a.Address == address);
+            }
+        }
     }
+
 }
