@@ -14,6 +14,10 @@ namespace BitcoinAddressValidator
 {
     public partial class MainWindow : Window
     {
+        // Dictionary for storing addresses for O(1) lookup
+        private Dictionary<string, BitcoinAddressRecord> addressDictionary = new Dictionary<string, BitcoinAddressRecord>();
+        private AddressCrawler addressCrawler;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -23,8 +27,21 @@ namespace BitcoinAddressValidator
             {
                 context.InitializeDatabase();
                 LoadAddressesFromDatabase(); // Load addresses from DB into the ListView
+                                             // Initialize the address crawler with the address dictionary
+                addressCrawler = new AddressCrawler(addressDictionary);
             }
         }
+
+        // Method to update the UI with crawl progress from the background thread
+    /*    private Task UpdateCrawlResultsAsync(string currentString)
+        {
+            return Dispatcher.InvokeAsync(() =>
+            {
+                CrawlResults.AppendText($"Checked string: {currentString}\n");
+                CrawlResults.ScrollToEnd(); // Ensure the latest result is visible
+            }).Task;
+        }*/
+
 
         // Placeholder behavior for multi-line TextBox: Remove placeholder text when the TextBox gains focus
         private void AddressInput_GotFocus(object sender, RoutedEventArgs e)
@@ -57,6 +74,7 @@ namespace BitcoinAddressValidator
 
             foreach (string address in addresses)
             {
+                await Task.Delay(2000);
                 string resultMessage = await ProcessAddressAsync(address.Trim());
                 ResultList.Items.Add(resultMessage);
             }
@@ -68,14 +86,12 @@ namespace BitcoinAddressValidator
         // Process each address: Validate, classify, and check balance
         private async Task<string> ProcessAddressAsync(string address)
         {
-            using (var context = new BitcoinAddressContext())
+            // Check if the address already exists in the dictionary (O(1) lookup)
+            if (addressDictionary.ContainsKey(address))
             {
-                // Check if the address already exists in the database
-                var existingAddress = context.Addresses.FirstOrDefault(a => a.Address == address);
-                if (existingAddress != null)
-                {
-                    return $"Address: {address} - Already in database. Type: {existingAddress.Type}, Balance: {existingAddress.Balance} BTC";
-                }
+                var existingAddress = addressDictionary[address];
+                //return $"Address: {address} - Already in database. Type: {existingAddress.Type}, Balance: {existingAddress.Balance} BTC";
+                return $"Address: {address} - Already in database.";// Type: {existingAddress.Type}, Balance: {existingAddress.Balance} BTC";
             }
 
             // Validate Bitcoin address
@@ -91,7 +107,7 @@ namespace BitcoinAddressValidator
             decimal balance = await GetBitcoinBalance(address);
             if (balance > 0)
             {
-                // Add to database only if balance is greater than 0
+                // Add to database and dictionary only if balance is greater than 0
                 await AddAddressToDatabase(address, addressType, balance);
                 return $"Address: {address} - Type: {addressType}, Balance: {balance} BTC - Added to database";
             }
@@ -102,6 +118,26 @@ namespace BitcoinAddressValidator
             else
             {
                 return $"Address: {address} - Failed to retrieve balance.";
+            }
+        }
+
+        // Add the Bitcoin address to the SQLite database and the dictionary
+        private async Task AddAddressToDatabase(string address, string type, decimal balance)
+        {
+            using (var context = new BitcoinAddressContext())
+            {
+                var addressRecord = new BitcoinAddressRecord
+                {
+                    Address = address,
+                    Type = type,
+                    Balance = balance
+                };
+                context.Addresses.Add(addressRecord);
+                await context.SaveChangesAsync();
+
+                // Add to dictionary for O(1) lookup
+                //addressDictionary[address] = addressRecord;
+                addressDictionary[address] = null;
             }
         }
 
@@ -164,29 +200,25 @@ namespace BitcoinAddressValidator
             }
         }
 
-        // Add the Bitcoin address to the SQLite database
-        private async Task AddAddressToDatabase(string address, string type, decimal balance)
-        {
-            using (var context = new BitcoinAddressContext())
-            {
-                var addressRecord = new BitcoinAddressRecord
-                {
-                    Address = address,
-                    Type = type,
-                    Balance = balance
-                };
-                context.Addresses.Add(addressRecord);
-                await context.SaveChangesAsync();
-            }
-        }
 
-        // Load addresses from the SQLite database and display them in the ListView
+
+        // Load addresses from the SQLite database and store them in the dictionary for O(1) lookup
         private void LoadAddressesFromDatabase()
         {
             using (var context = new BitcoinAddressContext())
             {
                 // Fetch the addresses from the database
                 var addresses = context.Addresses.ToList();
+
+                // Populate the dictionary for O(1) lookup
+                addressDictionary.Clear();
+                foreach (var addressRecord in addresses)
+                {
+                    if (!addressDictionary.ContainsKey(addressRecord.Address))
+                    {
+                        addressDictionary[addressRecord.Address] = addressRecord;
+                    }
+                }
 
                 // Set the DataGrid's item source to the list of addresses
                 AddressesDataGrid.ItemsSource = addresses;
@@ -267,6 +299,12 @@ namespace BitcoinAddressValidator
             }
         }
 
+        // Check if the given address exists in the dictionary (O(1) lookup)
+        private bool AddressExistsInDatabase(string address)
+        {
+            return addressDictionary.ContainsKey(address);
+        }
+
         // Event handler for generating addresses from the input string
         private void GenerateAddresses_Click(object sender, RoutedEventArgs e)
         {
@@ -292,7 +330,7 @@ namespace BitcoinAddressValidator
             // Generate Segwit (Bech32) address
             string segwitAddress = key.PubKey.WitHash.GetAddress(Network.Main).ToString();
 
-            // Check if the addresses are in the database
+            // Check if the addresses are in the dictionary (O(1) lookup)
             bool p2pkhExists = AddressExistsInDatabase(p2pkhAddress);
             bool p2shExists = AddressExistsInDatabase(p2shAddress);
             bool segwitExists = AddressExistsInDatabase(segwitAddress);
@@ -339,14 +377,99 @@ namespace BitcoinAddressValidator
             }
         }
 
-        // Check if the given address exists in the database
-        private bool AddressExistsInDatabase(string address)
+        private CancellationTokenSource _cancellationTokenSource;
+        private long _stringsCheckedCount;  // Counter to track the number of strings checked
+
+        private async void StartCrawling_Click(object sender, RoutedEventArgs e)
         {
-            using (var context = new BitcoinAddressContext())
+            string startString = CrawlStringInput.Text;
+
+            if (string.IsNullOrWhiteSpace(startString))
             {
-                return context.Addresses.Any(a => a.Address == address);
+                MessageBox.Show("Please enter a valid starting string.");
+                return;
             }
+
+            // Initialize the CancellationTokenSource
+            _cancellationTokenSource = new CancellationTokenSource();
+            _stringsCheckedCount = 0;
+            UpdateStringsCheckedCount();  // Initialize the UI
+
+            // Disable the UI elements while crawling
+            CrawlStringInput.IsEnabled = false;
+            CrawlResults.Clear(); // Clear previous results
+
+            // Run the crawling logic in a background task
+            await Task.Run(async () =>
+            {
+                try
+                {
+                    // Start the crawling process
+                    string result = await addressCrawler.CrawlAndFindMatch(startString, UpdateCrawlResultsAsync, _cancellationTokenSource.Token);
+
+                    // After completion, update the UI on the main thread
+                    Dispatcher.Invoke(() =>
+                    {
+                        CrawlResults.Text += $"\n{result}";
+                        //CrawlStringInput.IsEnabled = true; // Re-enable the input field
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        CrawlResults.AppendText("\nCrawling stopped by the user.\n");
+                        CrawlStringInput.IsEnabled = true;
+                    });
+                }
+            });
         }
+
+        // Method to update the strings checked count on the UI
+        private void UpdateStringsCheckedCount()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                StringsCheckedCount.Text = _stringsCheckedCount.ToString();
+            });
+        }
+
+        // Method to batch update the UI every 20 checks
+        private Task UpdateCrawlResultsAsync(string currentString)
+        {
+            // Increment the counter
+            _stringsCheckedCount++;
+            UpdateStringsCheckedCount();
+
+            // Update the crawling results
+            return Dispatcher.InvokeAsync(() =>
+            {     
+                
+                if (_stringsCheckedCount % 200 == 0)
+                {
+                    if (_stringsCheckedCount % 4000 == 0)
+                    {
+                        CrawlResults.Clear();
+                    }
+                    else
+                    {
+                        CrawlResults.AppendText($"Checked string: {currentString}\n");
+                    }
+                }
+
+                //CrawlResults.ScrollToEnd(); // Ensure the latest result is visible
+                
+            }).Task;
+        }
+
+
+        // Handle the "Stop" button
+        private void StopCrawling_Click(object sender, RoutedEventArgs e)
+        {
+            _cancellationTokenSource?.Cancel(); // Trigger cancellation
+        }
+
+
     }
 
 }

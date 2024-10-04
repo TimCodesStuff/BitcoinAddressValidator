@@ -1,7 +1,7 @@
 ﻿<Window x:Class="BitcoinAddressValidator.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Bitcoin Address Storage" Height="450" Width="600">
+        Title="Bitcoin Address Storage" Height="450" Width="650">
     <Grid>
         <TabControl>
             <!-- First Tab: Input Addresses -->
@@ -11,14 +11,23 @@
                              Text="Enter Bitcoin Addresses (one per line)" Foreground="Gray"
                              GotFocus="AddressInput_GotFocus" LostFocus="AddressInput_LostFocus" />
                     <Button Name="ValidateButton" Content="Validate &amp; Add" Width="150" Margin="10" Click="ValidateButton_Click" />
-                    <ListBox Name="ResultList" Width="400" Height="150" Margin="10"/>
+                    <ListBox Name="ResultList" Width="600" Height="150" Margin="10"/>
                 </StackPanel>
             </TabItem>
 
             <!-- Second Tab: Display Addresses from Database -->
             <TabItem Header="Stored Addresses">
-                <StackPanel>
-                    <DataGrid x:Name="AddressesDataGrid" AutoGenerateColumns="False" SelectionMode="Single">
+                <Grid>
+                    <!-- Define rows for layout control -->
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <!-- Makes the DataGrid take up the majority of the space -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Space for the buttons, only as tall as they need to be -->
+                    </Grid.RowDefinitions>
+
+                    <DataGrid x:Name="AddressesDataGrid" AutoGenerateColumns="False" SelectionMode="Single" 
+                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Grid.Row="0">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="*" />
                             <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto" />
@@ -26,14 +35,16 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <!-- Buttons for exporting data -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
-                        <Button Content="Remove Selected Address" Click="RemoveSelectedAddress_Click" />
-                        <Button Content="Export to JSON" Width="120" Click="ExportToJson_Click" Margin="5"/>
-                        <Button Content="Export to CSV" Width="120" Click="ExportToCsv_Click" Margin="5"/>
-                    </StackPanel>
-                </StackPanel>
+                    <!-- Buttons for exporting data (aligned at the bottom) -->
+                    <DockPanel Grid.Row="1" LastChildFill="False" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
+                        <Button Content="Remove Selected Address" Click="RemoveSelectedAddress_Click" Margin="5,5,5,5"/>
+                        <Button Content="Export to JSON" Width="120" Click="ExportToJson_Click" Margin="5,5,5,5"/>
+                        <Button Content="Export to CSV" Width="120" Click="ExportToCsv_Click" Margin="5,5,5,5"/>
+                    </DockPanel>
+                </Grid>
             </TabItem>
+
+
 
             <TabItem Header="Generate Addresses from String">
                 <StackPanel>
@@ -69,6 +80,21 @@
                 </StackPanel>
             </TabItem>
 
+            <!-- fourth tab -->
+            <TabItem Header="Crawl Strings for Matching Addresses">
+                <StackPanel>
+                    <TextBox Name="CrawlStringInput" Width="400" Margin="10" />
+                    <Button Content="Start Crawling" Width="150" Margin="10" Click="StartCrawling_Click" />
+                    <Button Content="Stop Crawling" Width="150" Margin="10" Click="StopCrawling_Click" />
+
+                    <TextBlock Text="Strings Checked:" FontWeight="Bold" Margin="10"/>
+                    <TextBlock Name="StringsCheckedCount" Text="0" Margin="10"/>
+                    
+                    <TextBlock Text="Crawling Results:" FontWeight="Bold" Margin="10"/>
+                    
+                    <TextBox Name="CrawlResults" Width="400" Height="150" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+            </TabItem>
 
         </TabControl>
     </Grid>
